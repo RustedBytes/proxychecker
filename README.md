@@ -60,19 +60,38 @@ Failed checks yield:
 }
 ```
 
-That means you can collect `successful` and `failed` proxies in Python while
-still getting each result immediately:
+If you want a more structured object in Python, you can wrap each yielded
+dictionary in a dataclass while still processing results as they arrive:
 
 ```python
-successful = []
-failed = []
+from dataclasses import dataclass
+
+
+@dataclass(slots=True)
+class ProxyCheckResult:
+    proxy: str
+    ok: bool
+    data: dict[str, object]
+
+    @classmethod
+    def from_result(cls, result: dict[str, object]) -> "ProxyCheckResult":
+        return cls(
+            proxy=str(result.get("proxy", "")),
+            ok=bool(result["ok"]),
+            data=result,
+        )
+
+
+successful: list[ProxyCheckResult] = []
+failed: list[ProxyCheckResult] = []
 
 stream = await rsloop_rust_proxychecker.check_proxies(proxies, user_agent="my-app/1.0")
 async for result in stream:
-    if result["ok"]:
-        successful.append(result)
+    proxy_result = ProxyCheckResult.from_result(result)
+    if proxy_result.ok:
+        successful.append(proxy_result)
     else:
-        failed.append(result)
+        failed.append(proxy_result)
 ```
 
 ## Supported proxy strings

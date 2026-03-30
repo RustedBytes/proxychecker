@@ -1,9 +1,25 @@
 from __future__ import annotations
 
 import pprint
+from dataclasses import dataclass
 
 import rsloop
 import rsloop_rust_proxychecker
+
+
+@dataclass(slots=True)
+class ProxyCheckResult:
+    proxy: str
+    ok: bool
+    data: dict[str, object]
+
+    @classmethod
+    def from_result(cls, result: dict[str, object]) -> ProxyCheckResult:
+        return cls(
+            proxy=str(result.get("proxy", "")),
+            ok=bool(result["ok"]),
+            data=result,
+        )
 
 
 def read_proxies_from_file(file_path: str) -> list[str]:
@@ -18,15 +34,16 @@ async def main() -> None:
         user_agent="rsloop-rust-proxychecker-demo/0.1",
         timeout_ms=3_000,
     )
-    successful: list[dict[str, object]] = []
-    failed: list[dict[str, object]] = []
+    successful: list[ProxyCheckResult] = []
+    failed: list[ProxyCheckResult] = []
 
     async for result in stream:
-        pprint.pp(result)
-        if result["ok"]:
-            successful.append(result)
+        proxy_result = ProxyCheckResult.from_result(result)
+        pprint.pp(proxy_result)
+        if proxy_result.ok:
+            successful.append(proxy_result)
         else:
-            failed.append(result)
+            failed.append(proxy_result)
 
     print("successful:", len(successful))
     print("failed:", len(failed))
