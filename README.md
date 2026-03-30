@@ -71,14 +71,24 @@ from dataclasses import dataclass
 class ProxyCheckResult:
     proxy: str
     ok: bool
-    data: dict[str, object]
+    elapsed_ms: int
+    status: int | None = None
+    error: str | None = None
+    response_text: str | None = None
 
     @classmethod
     def from_result(cls, result: dict[str, object]) -> "ProxyCheckResult":
         return cls(
             proxy=str(result.get("proxy", "")),
             ok=bool(result["ok"]),
-            data=result,
+            elapsed_ms=int(result["elapsed_ms"]),
+            status=int(result["status"]) if result.get("status") is not None else None,
+            error=str(result["error"]) if result.get("error") is not None else None,
+            response_text=(
+                str(result["response_text"])
+                if result.get("response_text") is not None
+                else None
+            ),
         )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pprint
+import json
 from dataclasses import dataclass
 
 import rsloop
@@ -11,14 +12,24 @@ import rsloop_rust_proxychecker
 class ProxyCheckResult:
     proxy: str
     ok: bool
-    data: dict[str, object]
+    elapsed_ms: int
+    status: int | None = None
+    error: str | None = None
+    response_text: str | None = None
 
     @classmethod
     def from_result(cls, result: dict[str, object]) -> ProxyCheckResult:
         return cls(
             proxy=str(result.get("proxy", "")),
             ok=bool(result["ok"]),
-            data=result,
+            elapsed_ms=int(result["elapsed_ms"]),
+            status=int(result["status"]) if result.get("status") is not None else None,
+            error=str(result["error"]) if result.get("error") is not None else None,
+            response_text=(
+                str(result["response_text"])
+                if result.get("response_text") is not None
+                else None
+            ),
         )
 
 
@@ -33,6 +44,7 @@ async def main() -> None:
         proxies,
         user_agent="rsloop-rust-proxychecker-demo/0.1",
         timeout_ms=3_000,
+        return_response=True,
     )
     successful: list[ProxyCheckResult] = []
     failed: list[ProxyCheckResult] = []
@@ -47,6 +59,15 @@ async def main() -> None:
 
     print("successful:", len(successful))
     print("failed:", len(failed))
+
+    for result in successful:
+        print(
+            f"Successful proxy: {result.proxy} (status: {result.status}, elapsed: {result.elapsed_ms}ms)"
+        )
+        print("--- Response text ---")
+        data = json.loads(result.response_text) if result.response_text else {}
+        pprint.pp(data)
+        print("--- End of response ---\n")
 
 
 if __name__ == "__main__":
