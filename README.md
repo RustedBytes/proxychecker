@@ -1,8 +1,8 @@
-# Rust Proxy Checker Example
+# proxyprobe
 
 [![CI](https://github.com/RustedBytes/proxychecker/actions/workflows/ci.yml/badge.svg)](https://github.com/RustedBytes/proxychecker/actions/workflows/ci.yml)
 
-This example is a standalone PyO3 extension built on top of `rsloop::rust_async`
+`proxyprobe` is a standalone PyO3 extension built on top of `rsloop::rust_async`
 that checks many proxies concurrently and yields Python-friendly result objects
 as soon as each proxy finishes.
 
@@ -12,11 +12,20 @@ It uses:
 - `wreq` for the HTTP client and proxy support
 - a dedicated Tokio runtime inside the Rust worker because `wreq` runs on Tokio
 
+## Migration
+
+The distribution and import name are now `proxyprobe` (previously
+`rsloop-rust-proxychecker` and `rsloop_rust_proxychecker`). Update your dependency
+and imports; function arguments and result dictionaries are unchanged.
+
 ## Python API
 
 ```python
+import proxyprobe
+
+
 async def main():
-    stream = await rsloop_rust_proxychecker.check_proxies(
+    stream = await proxyprobe.check_proxies(
         proxies,
         user_agent="my-app/1.0",
         check_url="https://httpbin.org/post",
@@ -67,6 +76,7 @@ dictionary in a dataclass while still processing results as they arrive:
 
 ```python
 from dataclasses import dataclass
+import proxyprobe
 
 
 @dataclass(slots=True)
@@ -97,7 +107,7 @@ class ProxyCheckResult:
 successful: list[ProxyCheckResult] = []
 failed: list[ProxyCheckResult] = []
 
-stream = await rsloop_rust_proxychecker.check_proxies(proxies, user_agent="my-app/1.0")
+stream = await proxyprobe.check_proxies(proxies, user_agent="my-app/1.0")
 async for result in stream:
     proxy_result = ProxyCheckResult.from_result(result)
     if proxy_result.ok:

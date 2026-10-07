@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass
 
 import rsloop
-import rsloop_rust_proxychecker
+import proxyprobe
 
 
 @dataclass(slots=True)
@@ -40,9 +40,9 @@ def read_proxies_from_file(file_path: str) -> list[str]:
 
 async def main() -> None:
     proxies = read_proxies_from_file("proxies.txt")
-    stream = await rsloop_rust_proxychecker.check_proxies(
+    stream = await proxyprobe.check_proxies(
         proxies,
-        user_agent="rsloop-rust-proxychecker-demo/0.1",
+        user_agent="proxyprobe-demo/0.1",
         timeout_ms=3_000,
         return_response=True,
     )
