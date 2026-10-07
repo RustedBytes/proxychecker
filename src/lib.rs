@@ -57,7 +57,7 @@ fn check_proxies(
     }
 
     let check_url = check_url.unwrap_or_else(|| DEFAULT_CHECK_URL.to_string());
-    wreq::Url::parse(&check_url)
+    url::Url::parse(&check_url)
         .map_err(|err| PyValueError::new_err(format!("invalid check_url: {err}")))?;
 
     let config = CheckerConfig {
@@ -136,7 +136,7 @@ async fn run_proxy_checks_async(
     .boxed();
 
     while let Some(outcome) = outcomes.next().await {
-        emit_stream_result(&loop_obj, &queue, outcome)
+        emit_stream_result(loop_obj, queue, outcome)
             .map_err(|err| format!("failed to emit proxy result: {err}"))?;
     }
 
@@ -147,7 +147,7 @@ fn build_client(config: &CheckerConfig) -> Result<wreq::Client, String> {
     let mut builder = wreq::Client::builder()
         .user_agent(config.user_agent.clone())
         .no_proxy()
-        .no_keepalive()
+        .pool_max_idle_per_host(0)
         .timeout(config.timeout)
         .read_timeout(config.timeout)
         .connect_timeout(config.timeout)
@@ -163,22 +163,53 @@ fn build_client(config: &CheckerConfig) -> Result<wreq::Client, String> {
         .map_err(|err| format!("failed to build wreq client: {err}"))
 }
 
+fn parse_proxy(proxy: &str) -> Result<wreq::Proxy, String> {
+    // Preserve support for host:port inputs while rejecting schemes that wreq's
+    // matcher silently ignores (which would otherwise send the request directly).
+    let uri = if proxy.contains("://") {
+        url::Url::parse(proxy)
+    } else {
+        url::Url::parse(&format!("http://{proxy}"))
+    }
+    .map_err(|err| format!("invalid proxy URL: {err}"))?;
+    if !matches!(
+        uri.scheme(),
+        "http" | "https" | "socks4" | "socks4a" | "socks5" | "socks5h"
+    ) {
+        return Err(format!("unsupported proxy scheme: {}", uri.scheme()));
+    }
+    wreq::Proxy::all(uri.as_str()).map_err(|err| err.to_string())
+}
+
 async fn check_one_proxy(
     client: wreq::Client,
     config: CheckerConfig,
     proxy: String,
 ) -> ProxyOutcome {
     let started = Instant::now();
+    let request_proxy = match parse_proxy(&proxy) {
+        Ok(request_proxy) => request_proxy,
+        Err(err) => {
+            return ProxyOutcome {
+                proxy,
+                elapsed_ms: started.elapsed().as_millis(),
+                status: None,
+                ok: false,
+                error: Some(err),
+                response_text: None,
+            };
+        }
+    };
     let request = client
         .post(config.check_url.clone())
-        .proxy(proxy.clone())
+        .proxy(request_proxy)
         .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
         .timeout(config.timeout)
         .read_timeout(config.timeout)
         .body(REQUEST_BODY);
 
     match request.send().await {
-        Ok(mut response) => {
+        Ok(response) => {
             let status = response.status();
             let status_code = status.as_u16();
             let body = if config.return_response {
@@ -188,7 +219,10 @@ async fn check_one_proxy(
                     .map(|bytes| Some(String::from_utf8_lossy(&bytes).into_owned()))
             } else {
                 async {
-                    while response.chunk().await?.is_some() {}
+                    let mut chunks = response.bytes_stream().boxed();
+                    while let Some(chunk) = chunks.next().await {
+                        drop(chunk?);
+                    }
                     Ok(None)
                 }
                 .await
@@ -237,7 +271,7 @@ fn build_outcome_dict(py: Python<'_>, outcome: ProxyOutcome) -> PyResult<Py<PyAn
     item.set_item("ok", outcome.ok)?;
     item.set_item(
         "elapsed_ms",
-        outcome.elapsed_ms.min(u64::MAX as u128) as u64,
+        u64::try_from(outcome.elapsed_ms).unwrap_or(u64::MAX),
     )?;
     if let Some(status) = outcome.status {
         item.set_item("status", status)?;
@@ -302,6 +336,8 @@ impl PyProxyCheckStream {
         slf
     }
 
+    // PyO3 requires an owned receiver for this async iterator slot.
+    #[allow(clippy::needless_pass_by_value)]
     fn __anext__(slf: Py<Self>, py: Python<'_>) -> PyResult<Bound<'_, PyAny>> {
         let queue = slf.borrow(py).queue.clone_ref(py);
         let locals = rsloop::rust_async::get_current_locals(py)?;
@@ -356,6 +392,32 @@ mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+
+    #[test]
+    fn proxy_parser_rejects_unsupported_schemes() {
+        for proxy in [
+            "invalid://proxy",
+            "ftp://127.0.0.1:8080",
+            "file:///tmp/proxy",
+        ] {
+            assert!(parse_proxy(proxy).is_err());
+        }
+    }
+
+    #[test]
+    fn proxy_parser_preserves_supported_schemes_and_bare_addresses() {
+        for proxy in [
+            "http://127.0.0.1:8080",
+            "https://127.0.0.1:8080",
+            "socks4://127.0.0.1:1080",
+            "socks4a://127.0.0.1:1080",
+            "socks5://user:pass@127.0.0.1:1080",
+            "socks5h://127.0.0.1:1080",
+            "127.0.0.1:8080",
+        ] {
+            assert!(parse_proxy(proxy).is_ok(), "failed to parse {proxy}");
+        }
+    }
 
     async fn check_response(status: u16, return_response: bool, truncated: bool) -> ProxyOutcome {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
