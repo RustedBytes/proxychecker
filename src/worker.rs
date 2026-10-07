@@ -46,7 +46,7 @@ fn run_proxy_checks_blocking(
     let runtime = TokioRuntimeBuilder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|err| format!("failed to build tokio runtime for wreq: {err}"))?;
+        .map_err(|err| format!("failed to build tokio runtime for reqwest: {err}"))?;
 
     let (loop_obj, queue) = Python::attach(|py| {
         (
@@ -71,13 +71,13 @@ async fn run_proxy_checks_async(
     queue: Arc<Py<PyAny>>,
     credits: Arc<Semaphore>,
 ) -> Result<(), String> {
-    let client = build_client(&config)?;
+    // Validate configuration before starting even an empty proxy batch.
+    drop(build_client(&config, None)?);
     let concurrency = config.concurrency.min(proxies.len().max(1));
 
     let mut outcomes = stream::iter(proxies.into_iter().map(|proxy| {
-        let client = client.clone();
         let config = config.clone();
-        async move { check_one_proxy(client, config, proxy).await }
+        async move { check_one_proxy(config, proxy).await }
     }))
     .buffer_unordered(concurrency)
     .boxed();
