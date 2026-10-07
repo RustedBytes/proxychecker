@@ -110,6 +110,25 @@ The example passes the proxy string directly to `wreq`, so support follows the
 proxy schemes that `wreq` accepts. In practice that includes normal HTTP/HTTPS
 proxies and, with the enabled `socks` feature, SOCKS proxies as well.
 
+## Development
+
+Requires Python 3.10+ and Rust 1.98+. Native builds also need CMake, a C/C++
+compiler, and libclang (on Ubuntu: `sudo apt-get install cmake clang libclang-dev`).
+
+```bash
+cargo fmt --check
+cargo check --locked --all-targets
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+uv run python -m unittest discover -s tests -v
+```
+
+Pedantic Clippy is enabled in `Cargo.toml`. CI checks relevant pull requests and
+pushes to `master`, supports manual runs, and skips documentation-only changes.
+The Python API is tested on Python 3.10 and 3.15. Release notes are maintained in
+[CHANGELOG.md](CHANGELOG.md); dependency compatibility changes remain under
+`Unreleased` until the next version is prepared.
+
 ## Run
 
 From the repository root:
