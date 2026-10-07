@@ -11,6 +11,7 @@ dependencies = [
 ]
 
 [tool.maturin]
+features = ["pyo3/extension-module"]
 module-name = "rsloop_rust_proxychecker"
 
 [dependency-groups]

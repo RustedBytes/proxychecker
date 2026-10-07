@@ -1,5 +1,7 @@
 # Rust Proxy Checker Example
 
+[![CI](https://github.com/RustedBytes/proxychecker/actions/workflows/ci.yml/badge.svg)](https://github.com/RustedBytes/proxychecker/actions/workflows/ci.yml)
+
 This example is a standalone PyO3 extension built on top of `rsloop::rust_async`
 that checks many proxies concurrently and yields Python-friendly result objects
 as soon as each proxy finishes.
@@ -102,6 +104,35 @@ async for result in stream:
         successful.append(proxy_result)
     else:
         failed.append(proxy_result)
+```
+
+## Rust module layout
+
+- `api`: Python arguments, validation, and stream creation.
+- `config`: shared settings and defaults.
+- `checker`: proxy parsing, HTTP client, and single-proxy outcomes.
+- `worker`: Tokio worker lifecycle and bounded concurrency.
+- `stream`: Python queue delivery, result dictionaries, and async iteration.
+- `lib`: module registration.
+
+Build the internal Rust documentation with `cargo doc --no-deps --document-private-items`.
+
+## Coverage
+
+The CI check **Coverage (>=90%)** requires at least 90% line coverage across all
+production Rust modules, including the Python binding and worker code. It combines
+Rust unit tests with Python tests against an instrumented wheel; tests and external
+dependencies are excluded from the denominator. It measures line coverage, not branch
+coverage. The CI summary shows a progress bar; the `rust-coverage` artifact includes
+an HTML report, JSON metrics, and a badge with the measured percentage.
+
+To reproduce locally in an activated Python virtual environment:
+
+```bash
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov --version 0.9.1 --locked
+python -m pip install "maturin>=1.7,<2"
+bash scripts/coverage.sh
 ```
 
 ## Supported proxy strings
