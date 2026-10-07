@@ -17,6 +17,7 @@ Unreleased entry.
 - Rust checks, regression tests, pedantic Clippy, and Python API tests on Python 3.10 and 3.15.
 
 ### Changed
+- Use a current-thread Tokio runtime per batch and move Python result delivery to the blocking pool. Bound queued results by the batch concurrency.
 - **Breaking:** Rename the Python distribution, import module, and Rust crate to `proxyprobe`; update dependencies and imports from `rsloop-rust-proxychecker` / `rsloop_rust_proxychecker`. Function signatures and result dictionaries remain unchanged.
 - Split the extension implementation into API, configuration, checker, worker, and stream modules without changing the public Python API.
 - Enable PyO3 extension-module mode through Maturin so Rust unit tests can embed Python normally.
@@ -26,6 +27,7 @@ Unreleased entry.
 - Adapt proxy parsing, idle connection configuration, and body streaming to the current `wreq` API.
 
 ### Fixed
+- Cancel in-flight checks when the stream is dropped or a pending iteration is cancelled; propagate worker panics and thread startup failures instead of leaving consumers waiting.
 - Reject unsupported proxy schemes before sending requests, preventing silent direct-request fallback with the current `wreq`; preserve bare `host:port` proxy inputs.
 - Drain response bodies without accumulating them when `return_response=false`, preserving body-read failures and full body return when enabled (PR #1).
 

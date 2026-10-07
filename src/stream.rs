@@ -3,6 +3,8 @@
 use pyo3::exceptions::{PyRuntimeError, PyStopAsyncIteration};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use std::sync::Arc;
+use tokio::sync::{watch, Semaphore};
 
 use crate::checker::ProxyOutcome;
 
@@ -10,6 +12,31 @@ use crate::checker::ProxyOutcome;
 #[pyclass(module = "proxyprobe")]
 pub(crate) struct PyProxyCheckStream {
     pub(crate) queue: Py<PyAny>,
+    pub(crate) cancel: watch::Sender<bool>,
+    pub(crate) credits: Arc<Semaphore>,
+}
+
+impl Drop for PyProxyCheckStream {
+    fn drop(&mut self) {
+        let _ = self.cancel.send(true);
+    }
+}
+
+/// Cancel a pending iteration if its Rust future is dropped before completion.
+struct PendingIteration(Option<watch::Sender<bool>>);
+
+impl PendingIteration {
+    fn complete(mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for PendingIteration {
+    fn drop(&mut self) {
+        if let Some(cancel) = &self.0 {
+            let _ = cancel.send(true);
+        }
+    }
 }
 
 /// Convert an outcome to the public dictionary, omitting absent optional fields.
@@ -97,7 +124,11 @@ impl PyProxyCheckStream {
     // PyO3 requires an owned receiver for this async iterator slot.
     #[allow(clippy::needless_pass_by_value)]
     fn __anext__(slf: Py<Self>, py: Python<'_>) -> PyResult<Bound<'_, PyAny>> {
-        let queue = slf.borrow(py).queue.clone_ref(py);
+        let stream = slf.borrow(py);
+        let queue = stream.queue.clone_ref(py);
+        let credits = stream.credits.clone();
+        let pending = PendingIteration(Some(stream.cancel.clone()));
+        drop(stream);
         let locals = rsloop::rust_async::get_current_locals(py)?;
 
         rsloop::rust_async::future_into_py_with_locals(py, locals.clone(), async move {
@@ -107,7 +138,18 @@ impl PyProxyCheckStream {
             })?
             .await?;
 
-            Python::attach(|py| decode_message(queued.bind(py)))
+            pending.complete();
+            // Only item messages consumed a credit. Return it even if decoding fails.
+            Python::attach(|py| {
+                let message = queued.bind(py).cast::<PyDict>()?;
+                if message
+                    .get_item("kind")?
+                    .is_some_and(|kind| kind.extract::<String>().is_ok_and(|kind| kind == "item"))
+                {
+                    credits.add_permits(1);
+                }
+                decode_message(queued.bind(py))
+            })
         })
     }
 }

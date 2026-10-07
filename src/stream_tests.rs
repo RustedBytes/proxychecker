@@ -153,3 +153,23 @@ fn queue_delivery_propagates_event_loop_errors() {
         assert!(emit_stream_end(&closed_loop, &queue).is_err());
     });
 }
+
+#[test]
+fn stream_drop_and_pending_iteration_cancel_but_completion_does_not() {
+    let (cancel, cancelled) = tokio::sync::watch::channel(false);
+    PendingIteration(Some(cancel.clone())).complete();
+    assert!(!*cancelled.borrow());
+    drop(PendingIteration(Some(cancel.clone())));
+    assert!(*cancelled.borrow());
+    cancel.send(false).unwrap();
+    Python::initialize();
+    Python::attach(|py| {
+        let stream = PyProxyCheckStream {
+            queue: py.None(),
+            cancel,
+            credits: std::sync::Arc::new(tokio::sync::Semaphore::new(1)),
+        };
+        drop(stream);
+    });
+    assert!(*cancelled.borrow());
+}
