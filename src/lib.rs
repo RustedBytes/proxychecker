@@ -178,29 +178,37 @@ async fn check_one_proxy(
         .body(REQUEST_BODY);
 
     match request.send().await {
-        Ok(response) => {
+        Ok(mut response) => {
             let status = response.status();
             let status_code = status.as_u16();
-            match response.bytes().await {
-                Ok(bytes) if status.is_success() => ProxyOutcome {
+            let body = if config.return_response {
+                response
+                    .bytes()
+                    .await
+                    .map(|bytes| Some(String::from_utf8_lossy(&bytes).into_owned()))
+            } else {
+                async {
+                    while response.chunk().await?.is_some() {}
+                    Ok(None)
+                }
+                .await
+            };
+            match body {
+                Ok(response_text) if status.is_success() => ProxyOutcome {
                     proxy,
                     elapsed_ms: started.elapsed().as_millis(),
                     status: Some(status_code),
                     ok: true,
                     error: None,
-                    response_text: config
-                        .return_response
-                        .then(|| String::from_utf8_lossy(&bytes).into_owned()),
+                    response_text,
                 },
-                Ok(bytes) => ProxyOutcome {
+                Ok(response_text) => ProxyOutcome {
                     proxy,
                     elapsed_ms: started.elapsed().as_millis(),
                     status: Some(status_code),
                     ok: false,
                     error: Some(format!("target returned HTTP {status_code}")),
-                    response_text: config
-                        .return_response
-                        .then(|| String::from_utf8_lossy(&bytes).into_owned()),
+                    response_text,
                 },
                 Err(err) => ProxyOutcome {
                     proxy,
@@ -341,4 +349,97 @@ fn rsloop_rust_proxychecker(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyProxyCheckStream>()?;
     m.add_function(wrap_pyfunction!(check_proxies, m)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    async fn check_response(status: u16, return_response: bool, truncated: bool) -> ProxyOutcome {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0; 1024];
+            loop {
+                let count = socket.read(&mut buffer).await.unwrap();
+                assert_ne!(count, 0, "client closed before sending request body");
+                request.extend_from_slice(&buffer[..count]);
+                if let Some(end) = request.windows(4).position(|part| part == b"\r\n\r\n") {
+                    if request.len() >= end + 4 + REQUEST_BODY.len() {
+                        break;
+                    }
+                }
+            }
+            assert!(request.starts_with(b"POST http://target.invalid/check HTTP/1.1\r\n"));
+            if truncated {
+                socket.write_all(format!(
+                    "HTTP/1.1 {status} Test\r\nContent-Length: 100\r\nConnection: close\r\n\r\nshort"
+                ).as_bytes()).await.unwrap();
+            } else {
+                socket.write_all(format!(
+                    "HTTP/1.1 {status} Test\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+                ).as_bytes()).await.unwrap();
+                socket.write_all(b"3\r\nhel\r\n").await.unwrap();
+                socket.write_all(b"3\r\nlo\xff\r\n0\r\n\r\n").await.unwrap();
+            }
+            socket.shutdown().await.unwrap();
+        });
+        let config = CheckerConfig {
+            check_url: "http://target.invalid/check".into(),
+            user_agent: "proxychecker regression test".into(),
+            timeout: Duration::from_secs(5),
+            concurrency: 1,
+            return_response,
+        };
+        let outcome = check_one_proxy(build_client(&config).unwrap(), config, proxy.clone()).await;
+        server.await.unwrap();
+        assert_eq!(outcome.proxy, proxy);
+        assert_eq!(outcome.status, Some(status));
+        outcome
+    }
+
+    #[tokio::test]
+    async fn discards_body_for_success_and_non_success_status() {
+        for status in [200, 503] {
+            let outcome = check_response(status, false, false).await;
+            assert_eq!(outcome.ok, status == 200);
+            assert_eq!(outcome.response_text, None);
+            assert_eq!(
+                outcome.error,
+                (status != 200).then(|| format!("target returned HTTP {status}"))
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn body_read_errors_fail_for_both_modes_and_statuses() {
+        for return_response in [false, true] {
+            for status in [200, 503] {
+                let outcome = check_response(status, return_response, true).await;
+                assert!(!outcome.ok);
+                assert_eq!(outcome.response_text, None);
+                assert!(outcome
+                    .error
+                    .unwrap()
+                    .starts_with("response body read failed: "));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn return_response_preserves_full_body_and_lossy_utf8() {
+        for status in [200, 503] {
+            let outcome = check_response(status, true, false).await;
+            assert_eq!(outcome.ok, status == 200);
+            assert_eq!(outcome.response_text.as_deref(), Some("hello\u{fffd}"));
+            assert_eq!(
+                outcome.error,
+                (status != 200).then(|| format!("target returned HTTP {status}"))
+            );
+        }
+    }
 }
