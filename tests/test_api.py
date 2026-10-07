@@ -192,3 +192,77 @@ class IntegrationTests(unittest.TestCase):
                 self.assertTrue(all(item["ok"] for item in results))
                 self.assertLessEqual(state["maximum"], 3)
             asyncio.run(run())
+
+
+class LifecycleTests(unittest.TestCase):
+    def test_cancelling_iteration_closes_active_request(self):
+        async def run():
+            started = asyncio.Event()
+            disconnected = asyncio.Event()
+
+            async def handle(reader, writer):
+                try:
+                    await reader.readuntil(b"\r\n\r\n")
+                    await reader.readexactly(len(b"rsloop proxy checker"))
+                    started.set()
+                    self.assertEqual(await reader.read(), b"")
+                    disconnected.set()
+                finally:
+                    writer.close()
+                    await writer.wait_closed()
+
+            server = await asyncio.start_server(handle, "127.0.0.1", 0)
+            async with server:
+                port = server.sockets[0].getsockname()[1]
+                stream = await checker.check_proxies(
+                    [f"http://127.0.0.1:{port}"], user_agent="test",
+                    check_url="http://target.invalid/check", timeout_ms=10000
+                )
+                pending = asyncio.ensure_future(anext(stream))
+                await asyncio.wait_for(started.wait(), 3)
+                pending.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await pending
+                await asyncio.wait_for(disconnected.wait(), 3)
+
+        asyncio.run(run())
+
+    def test_slow_consumer_bounds_requests_and_drop_cancels(self):
+        async def run():
+            requests = 0
+            second = asyncio.Event()
+            third = asyncio.Event()
+
+            async def handle(reader, writer):
+                nonlocal requests
+                try:
+                    await reader.readuntil(b"\r\n\r\n")
+                    await reader.readexactly(len(b"rsloop proxy checker"))
+                    requests += 1
+                    if requests == 2:
+                        second.set()
+                    if requests == 3:
+                        third.set()
+                    writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    await writer.drain()
+                finally:
+                    writer.close()
+                    await writer.wait_closed()
+
+            server = await asyncio.start_server(handle, "127.0.0.1", 0)
+            async with server:
+                port = server.sockets[0].getsockname()[1]
+                stream = await checker.check_proxies(
+                    [f"http://127.0.0.1:{port}"] * 20,
+                    user_agent="test", check_url="http://target.invalid/check", concurrency=1,
+                )
+                await asyncio.wait_for(second.wait(), 3)
+                with self.assertRaises(asyncio.TimeoutError):
+                    await asyncio.wait_for(third.wait(), 0.2)
+                self.assertTrue((await anext(stream))["ok"])
+                await asyncio.wait_for(third.wait(), 3)
+                del stream
+                await asyncio.sleep(0.2)
+                self.assertLessEqual(requests, 3)
+
+        asyncio.run(run())

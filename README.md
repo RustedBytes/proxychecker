@@ -12,6 +12,18 @@ It uses:
 - `wreq` for the HTTP client and proxy support
 - a dedicated Tokio runtime inside the Rust worker because `wreq` runs on Tokio
 
+Each stream uses a current-thread Tokio runtime with I/O and timers enabled.
+Python result delivery runs on Tokio’s blocking pool. Pending result delivery is
+bounded by `concurrency`, so a slow consumer pauses further scheduling. At most
+`concurrency` queued item messages, one pending delivery outcome, and the bounded
+in-flight checks can retain results (plus terminal messages).
+
+Dropping the stream or cancelling a pending `__anext__` stops its Rust checks.
+Keep consuming the stream if you want every result; cancelling an iteration ends
+the whole batch. Worker panics are reported as `RuntimeError` when delivery remains
+possible. Cancellation cannot interrupt a Python callback already running on the
+blocking pool.
+
 ## Migration
 
 The distribution and import name are now `proxyprobe` (previously

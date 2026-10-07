@@ -2,8 +2,10 @@
 
 use std::time::Duration;
 
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
+use std::sync::Arc;
+use tokio::sync::{watch, Semaphore};
 
 use crate::config::{CheckerConfig, DEFAULT_CHECK_URL, DEFAULT_CONCURRENCY, DEFAULT_TIMEOUT_MS};
 use crate::stream::PyProxyCheckStream;
@@ -55,10 +57,14 @@ pub(crate) fn check_proxies(
     };
     let locals = rsloop::rust_async::get_current_locals(py)?;
     let queue = py.import("asyncio")?.getattr("Queue")?.call0()?.unbind();
+    let (cancel, cancelled) = watch::channel(false);
+    let credits = Arc::new(Semaphore::new(config.concurrency.min(proxies.len().max(1))));
     let stream = Py::new(
         py,
         PyProxyCheckStream {
             queue: queue.clone_ref(py),
+            cancel,
+            credits: credits.clone(),
         },
     )?
     .into_any();
@@ -68,7 +74,10 @@ pub(crate) fn check_proxies(
         config.clone(),
         locals.event_loop(py).unbind(),
         queue,
-    );
+        cancelled,
+        credits,
+    )
+    .map_err(PyRuntimeError::new_err)?;
     rsloop::rust_async::future_into_py(py, async move {
         let _ = config;
         Ok(stream)
