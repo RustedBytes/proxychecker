@@ -20,6 +20,7 @@ Unreleased entry.
 - Adapt proxy parsing, idle connection configuration, and body streaming to the current `wreq` API.
 
 ### Fixed
+- Reject unsupported proxy schemes before sending requests, preventing silent direct-request fallback with the current `wreq`; preserve bare `host:port` proxy inputs.
 - Drain response bodies without accumulating them when `return_response=false`, preserving body-read failures and full body return when enabled (PR #1).
 
 [Unreleased]: https://github.com/RustedBytes/proxychecker/compare/a82dce87b87247cf33dd6ec676b485d4f157c7c1...HEAD
