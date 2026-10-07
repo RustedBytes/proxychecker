@@ -165,7 +165,7 @@ class IntegrationTests(unittest.TestCase):
     def test_worker_setup_error_raises_runtime_error(self):
         async def run():
             stream = await checker.check_proxies([], user_agent="invalid\nheader")
-            with self.assertRaisesRegex(RuntimeError, "failed to build wreq client"):
+            with self.assertRaisesRegex(RuntimeError, "failed to build reqwest client"):
                 [item async for item in stream]
         asyncio.run(run())
 

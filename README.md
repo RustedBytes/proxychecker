@@ -9,8 +9,8 @@ as soon as each proxy finishes.
 It uses:
 
 - `rsloop::rust_async::future_into_py(...)` to expose the async work to Python
-- `wreq` for the HTTP client and proxy support
-- a dedicated Tokio runtime inside the Rust worker because `wreq` runs on Tokio
+- `reqwest` for the HTTP client and proxy support
+- a dedicated Tokio runtime inside the Rust worker because `reqwest` runs on Tokio
 
 Each stream uses a current-thread Tokio runtime with I/O and timers enabled.
 Python result delivery runs on Tokio’s blocking pool. Pending result delivery is
@@ -159,14 +159,15 @@ bash scripts/coverage.sh
 
 ## Supported proxy strings
 
-The example passes the proxy string directly to `wreq`, so support follows the
-proxy schemes that `wreq` accepts. In practice that includes normal HTTP/HTTPS
+The example passes the proxy string directly to `reqwest`, so support follows the
+proxy schemes that `reqwest` accepts. In practice that includes normal HTTP/HTTPS
 proxies and, with the enabled `socks` feature, SOCKS proxies as well.
 
 ## Development
 
-Requires Python 3.10+ and Rust 1.98+. Native builds also need CMake, a C/C++
-compiler, and libclang (on Ubuntu: `sudo apt-get install cmake clang libclang-dev`).
+Requires Python 3.10+ and Rust 1.98+. TLS uses rustls with the AWS-LC
+crypto provider, also used by rsloop. Native builds need a C compiler
+and may need CMake for AWS-LC. OpenSSL, BoringSSL and libclang are not required.
 
 ```bash
 cargo fmt --check

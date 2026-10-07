@@ -43,8 +43,8 @@ jobs:
         with:
           target: x86_64
           manylinux: "2_28"
+          before-script: dnf install -y cmake
           args: --release --locked --out dist --interpreter python3.10 python3.11 python3.12 python3.13 python3.14 python3.15
-          before-script: dnf install -y clang clang-devel cmake
       - uses: actions/upload-artifact@v7
         with:
           name: release-wheels

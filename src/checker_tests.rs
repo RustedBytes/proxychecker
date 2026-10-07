@@ -79,7 +79,7 @@ async fn check_response(status: u16, return_response: bool, truncated: bool) -> 
         concurrency: 1,
         return_response,
     };
-    let outcome = check_one_proxy(build_client(&config).unwrap(), config, proxy.clone()).await;
+    let outcome = check_one_proxy(config, proxy.clone()).await;
     server.await.unwrap();
     assert_eq!(outcome.proxy, proxy);
     assert_eq!(outcome.status, Some(status));
@@ -147,7 +147,7 @@ fn malformed_proxy_and_invalid_user_agent_are_rejected() {
     }
     let mut config = config_for("http://target.invalid/check");
     config.user_agent = "invalid\nheader".into();
-    assert!(build_client(&config).is_err());
+    assert!(build_client(&config, None).is_err());
 }
 
 #[tokio::test]
@@ -157,7 +157,7 @@ async fn invalid_proxy_and_transport_errors_have_no_http_status() {
     drop(listener);
     for proxy in ["invalid://proxy".to_string(), unavailable] {
         let config = config_for("http://target.invalid/check");
-        let outcome = check_one_proxy(build_client(&config).unwrap(), config, proxy.clone()).await;
+        let outcome = check_one_proxy(config, proxy.clone()).await;
         assert!(!outcome.ok);
         assert_eq!(outcome.proxy, proxy);
         assert!(outcome.error.is_some());
