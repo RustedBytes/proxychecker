@@ -10,10 +10,15 @@ Unreleased entry.
 ## [Unreleased]
 
 ### Added
+- Internal Rust module documentation and a rustdoc warning check.
+- Unit and local Python integration tests for stream messages, error propagation, body handling, and bounded concurrency.
+- A combined Rust/Python coverage check requiring at least 90% production Rust line coverage, with a CI progress bar and downloadable reports/badge.
 - CI for relevant pull requests, pushes to `master`, and manual runs, with path filters and cancellation of superseded runs.
 - Rust checks, regression tests, pedantic Clippy, and Python API tests on Python 3.10 and 3.15.
 
 ### Changed
+- Split the extension implementation into API, configuration, checker, worker, and stream modules without changing the public Python API.
+- Enable PyO3 extension-module mode through Maturin so Rust unit tests can embed Python normally.
 - Update the Rust `rsloop` dependency to 0.1.56 and `wreq` to the stable 0.16.1 series.
 - Update PyO3 to 0.29.3 for compatibility with `rsloop`.
 - Require Python 3.10 or newer and Rust 1.98 or newer for the updated dependencies.
