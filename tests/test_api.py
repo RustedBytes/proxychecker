@@ -1,13 +1,19 @@
 import asyncio
+from importlib.metadata import metadata
 from contextlib import contextmanager
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import unittest
 
-import rsloop_rust_proxychecker as checker
+import proxyprobe as checker
 
 
 class ApiTests(unittest.TestCase):
+    def test_package_identity(self):
+        self.assertEqual(metadata("proxyprobe")["Name"], "proxyprobe")
+        self.assertEqual(checker.__name__, "proxyprobe")
+        self.assertEqual(checker.PyProxyCheckStream.__module__, "proxyprobe")
+
     def test_empty_input_ends_stream(self):
         async def run():
             stream = await checker.check_proxies([], user_agent="test")

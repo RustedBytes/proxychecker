@@ -3,7 +3,7 @@ requires = ["maturin>=1.7,<2"]
 build-backend = "maturin"
 
 [project]
-name = "rsloop-rust-proxychecker"
+name = "proxyprobe"
 version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
@@ -12,7 +12,7 @@ dependencies = [
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
-module-name = "rsloop_rust_proxychecker"
+module-name = "proxyprobe"
 
 [dependency-groups]
 dev = [

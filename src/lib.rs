@@ -15,7 +15,7 @@ use pyo3::prelude::*;
 
 /// Register the existing Python function and asynchronous stream class.
 #[pymodule(gil_used = false)]
-fn rsloop_rust_proxychecker(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn proxyprobe(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<stream::PyProxyCheckStream>()?;
     m.add_function(wrap_pyfunction!(api::check_proxies, m)?)?;
     Ok(())

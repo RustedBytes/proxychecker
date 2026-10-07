@@ -7,7 +7,7 @@ use pyo3::types::PyDict;
 use crate::checker::ProxyOutcome;
 
 /// Asynchronous iterator backed by a Python queue populated from a Rust worker.
-#[pyclass(module = "rsloop_rust_proxychecker")]
+#[pyclass(module = "proxyprobe")]
 pub(crate) struct PyProxyCheckStream {
     pub(crate) queue: Py<PyAny>,
 }

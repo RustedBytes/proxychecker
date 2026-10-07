@@ -17,6 +17,7 @@ Unreleased entry.
 - Rust checks, regression tests, pedantic Clippy, and Python API tests on Python 3.10 and 3.15.
 
 ### Changed
+- **Breaking:** Rename the Python distribution, import module, and Rust crate to `proxyprobe`; update dependencies and imports from `rsloop-rust-proxychecker` / `rsloop_rust_proxychecker`. Function signatures and result dictionaries remain unchanged.
 - Split the extension implementation into API, configuration, checker, worker, and stream modules without changing the public Python API.
 - Enable PyO3 extension-module mode through Maturin so Rust unit tests can embed Python normally.
 - Update the Rust `rsloop` dependency to 0.1.56 and `wreq` to the stable 0.16.1 series.
